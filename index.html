@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Antikythera Mechanism 3D Visualization</title>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <div id="canvas-container"></div>
+      <aside id="ui-panel">
+        <header>
+          <h1>Antikythera Mechanism Explorer</h1>
+          <p>
+            Rotate, inspect, and animate a high-fidelity reconstruction of the
+            Antikythera mechanism. Use the controls below to explore its gear
+            trains and astronomical indications.
+          </p>
+        </header>
+        <section class="controls">
+          <h2>Animation</h2>
+          <div class="control-row">
+            <label for="play-toggle" class="sr-only">Play / Pause</label>
+            <button id="play-toggle" aria-label="Play or pause the mechanism">Pause</button>
+            <label for="speed" class="range-label">Handle Speed (rev/min)</label>
+            <input id="speed" type="range" min="-2" max="2" value="0.5" step="0.1" />
+            <output id="speed-value">0.5</output>
+          </div>
+          <div class="control-row">
+            <label for="time-step">Time scale multiplier</label>
+            <input id="time-step" type="range" min="0.1" max="20" step="0.1" value="5" />
+            <output id="time-step-value">×5.0</output>
+          </div>
+        </section>
+        <section class="controls">
+          <h2>Visualization</h2>
+          <div class="control-row">
+            <label for="train-filter">Highlight train</label>
+            <select id="train-filter">
+              <option value="all">All trains</option>
+            </select>
+          </div>
+          <div class="control-row">
+            <label for="gear-select">Focus gear</label>
+            <select id="gear-select">
+              <option value="">None</option>
+            </select>
+          </div>
+          <div class="control-row">
+            <label>
+              <input type="checkbox" id="show-axes" checked />
+              Show axes & carriers
+            </label>
+          </div>
+          <div class="control-row">
+            <label>
+              <input type="checkbox" id="show-tooth-markers" checked />
+              Show tooth markers
+            </label>
+          </div>
+        </section>
+        <section id="gear-details" aria-live="polite">
+          <h2>Gear details</h2>
+          <div class="details-grid">
+            <div class="details-label">Name</div>
+            <div class="details-value" data-field="name">—</div>
+            <div class="details-label">Teeth</div>
+            <div class="details-value" data-field="teeth">—</div>
+            <div class="details-label">Module</div>
+            <div class="details-value" data-field="module">—</div>
+            <div class="details-label">Function</div>
+            <div class="details-value" data-field="function">—</div>
+            <div class="details-label">Notes</div>
+            <div class="details-value" data-field="notes">Select a gear to inspect its role in the mechanism.</div>
+          </div>
+        </section>
+        <footer>
+          <p>
+            Based on published reconstructions by Freeth et al. (2014) and
+            Price (1974). Dimensions scaled to millimetre accuracy with watch
+            grade tolerances. Built for future VR immersion.
+          </p>
+        </footer>
+      </aside>
+    </div>
+    <div id="tooltip" role="tooltip" hidden></div>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
