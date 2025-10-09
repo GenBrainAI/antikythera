@@ -6,6 +6,7 @@ This project provides an interactive three-dimensional reconstruction of the Ant
 
 - **Full gear catalogue** – All surviving gears are modelled with accurate tooth counts, modules, thicknesses, and branch assignments (Metonic, Saros, Callippic, Olympiad, lunar anomaly, and parapegma).
 - **Interactive 3D scene** – Orbit, pan, and zoom around the mechanism. Highlight individual gears, filter by gear train, and display annotations for each axis.
+- **Front dial reconstruction** – Bronze front frame, zodiac/calendar dial texture, and live solar/lunar pointers keyed to the simulated gear train.
 - **Mechanical simulation** – Procedural computation of gear ratios based on tooth counts and connection types, enabling live animation from the main drive gear through all linked trains.
 - **Information overlay** – Inspect the function, historical notes, and specifications of every gear directly within the UI, with tooltips and focus controls.
 - **VR-ready architecture** – Scene graph and controls are structured to allow straightforward integration with WebXR and immersive input devices in subsequent phases.

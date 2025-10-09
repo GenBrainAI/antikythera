@@ -3,6 +3,7 @@ import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.161.0/exampl
 import { createGearMesh } from "./gearFactory.js";
 import { axes, gears, MILLIMETRES_PER_UNIT, trains } from "./data/gears.js";
 import { GearSystem } from "./system.js";
+import { createFrontDialAssembly } from "./frontDial.js";
 
 const scale = MILLIMETRES_PER_UNIT;
 const container = document.getElementById("canvas-container");
@@ -59,6 +60,7 @@ const axisGroups = new Map();
 const axisHelpers = [];
 const gearMeshes = new Map();
 const pickTargets = [];
+let dialPointerBindings = [];
 
 axes.forEach((axis) => {
   const group = new THREE.Group();
@@ -107,6 +109,18 @@ axes.forEach((axis) => {
   axisGroups.set(axis.id, group);
   scene.add(group);
 });
+
+const { group: frontDialGroup, pointerBindings: frontDialBindings } = createFrontDialAssembly({
+  scale,
+  axisGroups,
+});
+scene.add(frontDialGroup);
+dialPointerBindings = frontDialBindings.map((binding) => ({
+  pivot: binding.pivot,
+  gearId: binding.gearId,
+  ratio: binding.ratio ?? 1,
+  phase: binding.phase ?? 0,
+}));
 
 const showToothMarkersCheckbox = document.getElementById("show-tooth-markers");
 
@@ -360,6 +374,14 @@ function animate(now) {
   lastTime = now;
   controls.update();
   gearSystem.update(delta);
+  dialPointerBindings.forEach((binding) => {
+    const gearEntry = gearMeshes.get(binding.gearId);
+    if (!gearEntry) {
+      return;
+    }
+    const baseRotation = (gearEntry.mesh.rotation.y ?? 0) * binding.ratio + binding.phase;
+    binding.pivot.rotation.y = baseRotation;
+  });
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
 }
