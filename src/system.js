@@ -4,10 +4,8 @@ export class GearSystem {
   constructor(gearMeshes) {
     this.gears = gearMeshes; // Map id -> { mesh, data }
     this.adjacency = new Map();
-    this.angularVelocities = new Map();
     this.driverId = null;
     this.driverSpeed = 0; // radians per second
-    this.timeScale = 1;
 
     this.#buildGraph(connectionDefinitions);
   }
@@ -51,61 +49,81 @@ export class GearSystem {
     return 0;
   }
 
-  setDriver(gearId, revolutionsPerMinute) {
-    this.driverId = gearId;
-    this.driverSpeed = (revolutionsPerMinute / 60) * Math.PI * 2;
-    this.#recalculateVelocities();
+  /**
+   * Sets the rotational speed of the driver gear.
+   * @param {number} radiansPerSecond - The speed in radians per second.
+   */
+  setDriverSpeed(radiansPerSecond) {
+    this.driverId = "b1"; // The driver is always b1 now
+    this.driverSpeed = radiansPerSecond;
   }
 
-  setTimeScale(daysPerSecond) {
-    this.timeScale = daysPerSecond;
-  }
-
+  /**
+   * Toggles the paused state of the animation.
+   * @param {boolean} paused - Whether the animation should be paused.
+   */
   togglePause(paused) {
     this.paused = paused;
   }
 
-  #recalculateVelocities() {
-    this.angularVelocities.clear();
-    if (!this.driverId) {
+  /**
+   * Updates the gear system state for the next frame.
+   * @param {number} deltaSeconds - The time elapsed since the last frame in seconds.
+   */
+  update(deltaSeconds) {
+    if (this.paused || !this.driverId) {
       return;
     }
 
-    const queue = [this.driverId];
-    this.angularVelocities.set(this.driverId, this.driverSpeed);
-
-    const visited = new Set([this.driverId]);
-
-    while (queue.length > 0) {
-      const current = queue.shift();
-      const edges = this.adjacency.get(current) ?? [];
-      edges.forEach(({ to, ratio }) => {
-        if (ratio === 0) {
-          return;
-        }
-        const nextSpeed = (this.angularVelocities.get(current) ?? 0) * ratio;
-        if (!this.angularVelocities.has(to) || !visited.has(to)) {
-          this.angularVelocities.set(to, nextSpeed);
-        }
-        if (!visited.has(to)) {
-          visited.add(to);
-          queue.push(to);
-        }
-      });
+    const driver = this.gears.get(this.driverId);
+    if (driver) {
+      driver.mesh.rotation.y += this.driverSpeed * deltaSeconds;
+      this.propagateRotation(this.driverId, driver.mesh.rotation.y);
     }
   }
 
-  update(deltaSeconds) {
-    if (this.paused) {
-      return;
+  /**
+   * Sets the absolute rotation of a specific gear and propagates the change through the system.
+   * @param {string} gearId - The ID of the gear to set.
+   * @param {number} angle - The absolute angle in radians.
+   */
+  setGearRotation(gearId, angle) {
+    const gear = this.gears.get(gearId);
+    if (gear) {
+      gear.mesh.rotation.y = angle;
+      this.propagateRotation(gearId, angle);
     }
+  }
 
-    const dt = deltaSeconds * this.timeScale;
-    this.gears.forEach((entry) => {
-      const angularVelocity = this.angularVelocities.get(entry.data.id) ?? 0;
-      entry.mesh.rotation.y += angularVelocity * dt;
-      entry.mesh.userData.angularVelocity = angularVelocity;
-    });
+  /**
+   * Propagates rotation from a starting gear through the entire connected graph.
+   * @param {string} startNodeId - The ID of the gear where the rotation originates.
+   * @param {number} startAngle - The absolute angle of the starting gear.
+   */
+  propagateRotation(startNodeId, startAngle) {
+    const queue = [{ id: startNodeId, angle: startAngle }];
+    const visited = new Set([startNodeId]);
+
+    while (queue.length > 0) {
+      const current = queue.shift();
+      const currentGear = this.gears.get(current.id);
+      if (!currentGear) continue;
+
+      const edges = this.adjacency.get(current.id) ?? [];
+      edges.forEach(({ to, ratio, type }) => {
+        if (ratio === 0 || visited.has(to)) {
+          return;
+        }
+
+        const nextGear = this.gears.get(to);
+        if (nextGear) {
+          const nextAngle = current.angle * ratio;
+          nextGear.mesh.rotation.y = nextAngle;
+          visited.add(to);
+          queue.push({ id: to, angle: nextAngle });
+        }
+      });
+    }
   }
 
   getGear(id) {

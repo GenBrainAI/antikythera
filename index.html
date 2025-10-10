@@ -24,14 +24,20 @@
           <div class="control-row">
             <label for="play-toggle" class="sr-only">Play / Pause</label>
             <button id="play-toggle" aria-label="Play or pause the mechanism">Pause</button>
-            <label for="speed" class="range-label">Handle Speed (rev/min)</label>
-            <input id="speed" type="range" min="-2" max="2" value="0.5" step="0.1" />
-            <output id="speed-value">0.5</output>
+            <label for="speed-control">Animation Speed</label>
+            <select id="speed-control">
+              <option value="0">Paused</option>
+              <option value="1">1 Day / sec</option>
+              <option value="7">7 Days / sec</option>
+              <option value="30.44" selected>1 Month / sec</option>
+              <option value="365.25">1 Year / sec</option>
+              <option value="-1">Reverse (1 Day / sec)</option>
+            </select>
           </div>
           <div class="control-row">
-            <label for="time-step">Time scale multiplier</label>
-            <input id="time-step" type="range" min="0.1" max="20" step="0.1" value="5" />
-            <output id="time-step-value">×5.0</output>
+            <label for="date-input">Set Date</label>
+            <input type="date" id="date-input" />
+            <button id="set-date-btn">Set</button>
           </div>
         </section>
         <section class="controls">

@@ -83,6 +83,7 @@ const axisHelpers = [];
 const gearMeshes = new Map();
 const pickTargets = [];
 let dialPointerBindings = [];
+let celestialBodyBindings = [];
 
 axes.forEach((axis) => {
   const group = new THREE.Group();
@@ -143,6 +144,9 @@ dialPointerBindings = frontDialBindings.map((binding) => ({
   ratio: binding.ratio ?? 1,
   phase: binding.phase ?? 0,
 }));
+
+const solarSystemGroup = createSolarSystem(scale);
+scene.add(solarSystemGroup);
 
 const showToothMarkersCheckbox = document.getElementById("show-tooth-markers");
 
@@ -208,10 +212,9 @@ controller2.addEventListener("selectend", () => {
 
 
 const playToggle = document.getElementById("play-toggle");
-const speedSlider = document.getElementById("speed");
-const speedValue = document.getElementById("speed-value");
-const timeStepSlider = document.getElementById("time-step");
-const timeStepValue = document.getElementById("time-step-value");
+const speedControl = document.getElementById("speed-control");
+const dateInput = document.getElementById("date-input");
+const setDateBtn = document.getElementById("set-date-btn");
 const trainFilter = document.getElementById("train-filter");
 const gearSelect = document.getElementById("gear-select");
 const showAxesCheckbox = document.getElementById("show-axes");
@@ -226,8 +229,7 @@ const dragStartMatrix = new THREE.Matrix4();
 
 initialiseUI();
 setDetails(null);
-updateDriver();
-updateTimeScale();
+updateAnimationSpeed();
 gearSystem.togglePause(isPaused);
 
 const raycaster = new THREE.Raycaster();
@@ -257,16 +259,23 @@ playToggle.addEventListener("click", () => {
   isPaused = !isPaused;
   gearSystem.togglePause(isPaused);
   playToggle.textContent = isPaused ? "Play" : "Pause";
+  if (!isPaused) {
+    // If we are playing, ensure the speed is not 0
+    if (Number(speedControl.value) === 0) {
+      speedControl.value = "30.44"; // Default to 1 month/sec
+    }
+  } else {
+    speedControl.value = "0";
+  }
+  updateAnimationSpeed();
 });
 
-speedSlider.addEventListener("input", () => {
-  speedValue.textContent = Number(speedSlider.value).toFixed(1);
-  updateDriver();
-});
-
-timeStepSlider.addEventListener("input", () => {
-  timeStepValue.textContent = `×${Number(timeStepSlider.value).toFixed(1)}`;
-  updateTimeScale();
+speedControl.addEventListener("change", () => {
+  const speed = Number(speedControl.value);
+  isPaused = speed === 0;
+  gearSystem.togglePause(isPaused);
+  playToggle.textContent = isPaused ? "Play" : "Pause";
+  updateAnimationSpeed();
 });
 
 trainFilter.addEventListener("change", () => {
@@ -312,6 +321,23 @@ showToothMarkersCheckbox.addEventListener("change", () => {
   });
 });
 
+setDateBtn.addEventListener("click", () => {
+  const targetDate = new Date(dateInput.value);
+  if (isNaN(targetDate)) return;
+
+  // The mechanism's epoch is considered to be around 223 BCE for the Saros cycle.
+  // For simplicity, we'll use a more recent and easily calculable epoch.
+  const epoch = new Date("2000-01-01");
+  const millisecondsPerDay = 1000 * 60 * 60 * 24;
+  const daysDifference = (targetDate - epoch) / millisecondsPerDay;
+
+  // The b1 gear completes one rotation per year (365 days).
+  const rotationPerDay = (2 * Math.PI) / 365.25; // Use 365.25 to account for leap years
+  const targetAngle = daysDifference * rotationPerDay;
+
+  gearSystem.setGearRotation("b1", targetAngle);
+});
+
 function initialiseUI() {
   trains.forEach((train) => {
     const option = document.createElement("option");
@@ -329,17 +355,17 @@ function initialiseUI() {
       option.textContent = `${gear.label} (${gear.id.toUpperCase()})`;
       gearSelect.append(option);
     });
-
-  speedValue.textContent = Number(speedSlider.value).toFixed(1);
-  timeStepValue.textContent = `×${Number(timeStepSlider.value).toFixed(1)}`;
 }
 
-function updateDriver() {
-  gearSystem.setDriver("b1", Number(speedSlider.value));
-}
-
-function updateTimeScale() {
-  gearSystem.setTimeScale(Number(timeStepSlider.value));
+/**
+ * Calculates the driver gear's speed based on the selected value
+ * in the speed control dropdown and updates the gear system.
+ */
+function updateAnimationSpeed() {
+  const daysPerSecond = Number(speedControl.value);
+  const rotationPerDay = (2 * Math.PI) / 365.25;
+  const radiansPerSecond = daysPerSecond * rotationPerDay;
+  gearSystem.setDriverSpeed(radiansPerSecond);
 }
 
 function onWindowResize() {
@@ -484,6 +510,13 @@ function animate(now) {
     const baseRotation = (gearEntry.mesh.rotation.y ?? 0) * binding.ratio + binding.phase;
     binding.pivot.rotation.y = baseRotation;
   });
+  celestialBodyBindings.forEach((binding) => {
+    const gearEntry = gearMeshes.get(binding.gearId);
+    if (!gearEntry) {
+      return;
+    }
+    binding.pivot.rotation.z = gearEntry.mesh.rotation.y;
+  });
   renderer.render(scene, camera);
 }
 
@@ -511,4 +544,53 @@ function createAxisLabel(text) {
   const sprite = new THREE.Sprite(material);
   sprite.scale.set(70 * scale, 70 * scale, 1);
   return sprite;
+}
+
+/**
+ * Creates the 3D visualization of the solar system, including the Sun,
+ * planets, and their orbital rings.
+ * @param {number} scale - The global scaling factor for the scene.
+ * @returns {THREE.Group} A group containing the entire solar system visualization.
+ */
+function createSolarSystem(scale) {
+  const solarSystemGroup = new THREE.Group();
+  solarSystemGroup.position.set(0, 150 * scale, 0);
+
+  const sun = new THREE.Mesh(
+    new THREE.SphereGeometry(15 * scale, 32, 32),
+    new THREE.MeshStandardMaterial({ color: 0xffd700, emissive: 0xffd700, emissiveIntensity: 1 }),
+  );
+  solarSystemGroup.add(sun);
+
+  const planetData = [
+    { name: "Mercury", gear: "m5", color: 0xcccccc, radius: 4, distance: 30 },
+    { name: "Venus", gear: "v4", color: 0xfdca40, radius: 6, distance: 50 },
+    { name: "Mars", gear: "ma3", color: 0xff6b6b, radius: 5, distance: 70 },
+    { name: "Jupiter", gear: "j3", color: 0xffd166, radius: 10, distance: 100 },
+    { name: "Saturn", gear: "sa3", color: 0xc4a287, radius: 8, distance: 130 },
+    { name: "Moon", gear: "k2", color: 0x8c8c8c, radius: 3, distance: 20 },
+  ];
+
+  planetData.forEach(p => {
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(p.distance * scale, 0.5 * scale, 16, 100),
+      new THREE.MeshStandardMaterial({ color: 0x444444 }),
+    );
+    ring.rotation.x = Math.PI / 2;
+    solarSystemGroup.add(ring);
+
+    const planet = new THREE.Mesh(
+      new THREE.SphereGeometry(p.radius * scale, 32, 32),
+      new THREE.MeshStandardMaterial({ color: p.color }),
+    );
+    planet.position.x = p.distance * scale;
+    ring.add(planet);
+
+    celestialBodyBindings.push({
+      pivot: ring,
+      gearId: p.gear,
+    });
+  });
+
+  return solarSystemGroup;
 }
