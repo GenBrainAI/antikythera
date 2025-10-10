@@ -1,5 +1,7 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js";
 import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/controls/OrbitControls.js";
+import { VRButton } from "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/webxr/VRButton.js";
+import { XRControllerModelFactory } from "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/webxr/XRControllerModelFactory.js";
 import { createGearMesh } from "./gearFactory.js";
 import { axes, gears, MILLIMETRES_PER_UNIT, trains } from "./data/gears.js";
 import { GearSystem } from "./system.js";
@@ -11,7 +13,22 @@ const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(container.clientWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
+renderer.xr.enabled = true;
 container.appendChild(renderer.domElement);
+const vrButton = VRButton.createButton(renderer);
+document.body.appendChild(vrButton);
+
+renderer.xr.addEventListener("sessionstart", () => {
+  dolly.position.set(-180 * scale, 1.6, 0);
+  document.getElementById("ui-panel").style.display = "none";
+});
+
+renderer.xr.addEventListener("sessionend", () => {
+  dolly.position.set(320, 220, 420);
+  camera.position.set(0, 1.6, 0);
+  controls.target.set(-180 * scale, 0, 0);
+  document.getElementById("ui-panel").style.display = "flex";
+});
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x05070b);
@@ -22,7 +39,12 @@ const camera = new THREE.PerspectiveCamera(
   0.1,
   4000,
 );
-camera.position.set(320, 220, 420);
+camera.position.set(0, 1.6, 0); // Set position for VR
+
+const dolly = new THREE.Group();
+dolly.position.set(320, 220, 420);
+dolly.add(camera);
+scene.add(dolly);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
@@ -141,6 +163,50 @@ gears.forEach((gear) => {
 
 const gearSystem = new GearSystem(gearMeshes);
 
+// VR controller setup
+const controller1 = renderer.xr.getController(0);
+scene.add(controller1);
+
+const controller2 = renderer.xr.getController(1);
+scene.add(controller2);
+
+const controllerModelFactory = new XRControllerModelFactory();
+
+const controllerGrip1 = renderer.xr.getControllerGrip(0);
+controllerGrip1.add(controllerModelFactory.createControllerModel(controllerGrip1));
+scene.add(controllerGrip1);
+
+const controllerGrip2 = renderer.xr.getControllerGrip(1);
+controllerGrip2.add(controllerModelFactory.createControllerModel(controllerGrip2));
+scene.add(controllerGrip2);
+
+const line = new THREE.Line(
+  new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]),
+  new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 })
+);
+line.name = "line";
+line.scale.z = 500;
+controller1.add(line);
+
+controller1.addEventListener("selectstart", () => {
+  if (hoveredGear) {
+    focusOnGear(hoveredGear);
+    setSelectedGear(hoveredGear);
+  }
+});
+
+controller2.addEventListener("selectstart", () => {
+  if (renderer.xr.isPresenting) {
+    isDragging = true;
+    dragStartMatrix.copy(controller2.matrixWorld);
+  }
+});
+
+controller2.addEventListener("selectend", () => {
+  isDragging = false;
+});
+
+
 const playToggle = document.getElementById("play-toggle");
 const speedSlider = document.getElementById("speed");
 const speedValue = document.getElementById("speed-value");
@@ -155,6 +221,8 @@ const detailFields = document.querySelectorAll("#gear-details [data-field]");
 let isPaused = false;
 let selectedGearId = null;
 let hoveredGear = null;
+let isDragging = false;
+const dragStartMatrix = new THREE.Matrix4();
 
 initialiseUI();
 setDetails(null);
@@ -369,10 +437,44 @@ function setDetails(gear) {
 }
 
 let lastTime = performance.now();
+const tempMatrix = new THREE.Matrix4();
+
+function handleController(controller) {
+  if (renderer.xr.isPresenting) {
+    const line = controller.getObjectByName("line");
+    tempMatrix.identity().extractRotation(controller.matrixWorld);
+    raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+    raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+    const intersects = raycaster.intersectObjects(pickTargets, false);
+    if (intersects.length > 0) {
+      const mesh = intersects[0].object;
+      const gearMesh = findGearByMesh(mesh);
+      if (gearMesh) {
+        hoveredGear = gearMesh.data.id;
+        line.material.color.setHex(0x00ff00);
+      }
+    } else {
+      hoveredGear = null;
+      line.material.color.setHex(0xffffff);
+    }
+  }
+}
+
+function handleDrag(controller) {
+  if (isDragging) {
+    const currentMatrix = controller.matrixWorld;
+    const delta = new THREE.Vector3().setFromMatrixPosition(currentMatrix).sub(new THREE.Vector3().setFromMatrixPosition(dragStartMatrix));
+    dolly.position.sub(delta);
+    dragStartMatrix.copy(currentMatrix);
+  }
+}
+
 function animate(now) {
   const delta = (now - lastTime) / 1000;
   lastTime = now;
   controls.update();
+  handleController(controller1);
+  handleDrag(controller2);
   gearSystem.update(delta);
   dialPointerBindings.forEach((binding) => {
     const gearEntry = gearMeshes.get(binding.gearId);
@@ -383,10 +485,9 @@ function animate(now) {
     binding.pivot.rotation.y = baseRotation;
   });
   renderer.render(scene, camera);
-  requestAnimationFrame(animate);
 }
 
-requestAnimationFrame(animate);
+renderer.setAnimationLoop(animate);
 
 function createAxisLabel(text) {
   const canvas = document.createElement("canvas");
