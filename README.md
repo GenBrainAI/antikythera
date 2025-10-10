@@ -4,7 +4,8 @@ This project provides an interactive three-dimensional reconstruction of the Ant
 
 ## Features
 
-- **Full gear catalogue** – All surviving gears are modelled with accurate tooth counts, modules, thicknesses, and branch assignments (Metonic, Saros, Callippic, Olympiad, lunar anomaly, and parapegma).
+- **Complete Gear System** – All surviving gears plus a full planetary system (Mercury, Venus, Mars, Jupiter, Saturn) based on the Freeth et al. (2021) reconstruction.
+- **Solar System Visualization** - A dynamic 3D display of the Sun, Moon, and planets, with their orbits directly driven by the mechanism's gears.
 - **Interactive 3D scene** – Orbit, pan, and zoom around the mechanism. Highlight individual gears, filter by gear train, and display annotations for each axis.
 - **Front dial reconstruction** – Bronze front frame, zodiac/calendar dial texture, and live solar/lunar pointers keyed to the simulated gear train.
 - **Mechanical simulation** – Procedural computation of gear ratios based on tooth counts and connection types, enabling live animation from the main drive gear through all linked trains.
@@ -16,7 +17,8 @@ This project provides an interactive three-dimensional reconstruction of the Ant
 1. Open `index.html` in any modern browser with WebGL2 support.
 2. Use the right-hand control panel to:
    - Play/pause the animation.
-   - Adjust the input crank speed (revolutions per minute) and simulation time scale.
+   - Set the animation speed using the time-based dropdown (e.g., "1 Day / sec").
+   - Set the mechanism to a specific date using the date picker.
    - Highlight specific gear trains.
    - Focus on and inspect individual gears.
    - Toggle visibility of axis guides and tooth markers.
