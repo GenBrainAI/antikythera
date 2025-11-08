@@ -35,6 +35,13 @@ import {
   daysSinceJ2000,
   calculateMoonPhase,
 } from "./astronomy.js";
+import {
+  createEnhancedSolarSystem,
+  updateCelestialBodies,
+  createZodiacBackground,
+  createEclipticPlane,
+  createEclipseMarkers,
+} from "./solarSystemEnhanced.js";
 
 const scale = MILLIMETRES_PER_UNIT;
 const container = document.getElementById("canvas-container");
