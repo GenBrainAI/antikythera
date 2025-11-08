@@ -3,9 +3,38 @@ import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.161.0/exampl
 import { VRButton } from "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/webxr/VRButton.js";
 import { XRControllerModelFactory } from "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/webxr/XRControllerModelFactory.js";
 import { createGearMesh } from "./gearFactory.js";
-import { axes, gears, MILLIMETRES_PER_UNIT, trains } from "./data/gears.js";
+import { axes, gears, MILLIMETRES_PER_UNIT, trains, connections } from "./data/gears.js";
 import { GearSystem } from "./system.js";
 import { createFrontDialAssembly } from "./frontDial.js";
+import {
+  createPositionLabel,
+  detectGearCollisions,
+  highlightOverlappingGears,
+  createConnectingRod,
+  createAngularMomentumArrow,
+  createCollisionReport,
+  createVerticalStackIndicator,
+  createLayerGridPlane,
+} from "./visualizationHelpers.js";
+import {
+  exportModelAsJSON,
+  exportModelAsCSV,
+  exportModelAsLaTeX,
+  generateFlowDiagram,
+  generateTransferMatrix,
+  downloadFile,
+} from "./mathematicalModel.js";
+import {
+  createValidationDashboard,
+  updateValidationDashboard,
+  toggleValidationDashboard,
+} from "./validationDashboard.js";
+import {
+  calculateAllPlanetsPositions,
+  dateToJulianDay,
+  daysSinceJ2000,
+  calculateMoonPhase,
+} from "./astronomy.js";
 
 const scale = MILLIMETRES_PER_UNIT;
 const container = document.getElementById("canvas-container");
@@ -85,6 +114,14 @@ const pickTargets = [];
 let dialPointerBindings = [];
 let celestialBodyBindings = [];
 
+// Visualization helpers
+const positionLabels = new Map();
+const angularMomentumArrows = new Map();
+const connectingRods = [];
+const stackIndicators = new Map();
+const layerGrids = [];
+let collisionReportElement = null;
+
 axes.forEach((axis) => {
   const group = new THREE.Group();
   group.position.set(axis.position[0] * scale, axis.height * scale, axis.position[1] * scale);
@@ -148,6 +185,10 @@ dialPointerBindings = frontDialBindings.map((binding) => ({
 const solarSystemGroup = createSolarSystem(scale);
 scene.add(solarSystemGroup);
 
+// Create validation dashboard
+const validationDashboardElement = createValidationDashboard();
+document.body.appendChild(validationDashboardElement);
+
 const showToothMarkersCheckbox = document.getElementById("show-tooth-markers");
 
 gears.forEach((gear) => {
@@ -163,6 +204,29 @@ gears.forEach((gear) => {
 
   const { rim, hub, bore, toothMeshes } = mesh.userData;
   pickTargets.push(rim, hub, bore, ...toothMeshes);
+
+  // Create position label (hidden by default)
+  const axis = axes.find(a => a.id === gear.axis);
+  if (axis) {
+    const label = createPositionLabel(gear, axis.position, gear.stack, scale);
+    label.visible = false;
+    mesh.add(label);
+    positionLabels.set(gear.id, label);
+  }
+
+  // Create angular momentum arrow (hidden by default)
+  const arrow = createAngularMomentumArrow(gear, 1, scale);
+  arrow.visible = false;
+  mesh.add(arrow);
+  angularMomentumArrows.set(gear.id, arrow);
+
+  // Create vertical stack indicator (hidden by default)
+  const stackIndicator = createVerticalStackIndicator(mesh, axis.height, scale);
+  if (stackIndicator) {
+    stackIndicator.visible = false;
+    mesh.add(stackIndicator);
+    stackIndicators.set(gear.id, stackIndicator);
+  }
 });
 
 const gearSystem = new GearSystem(gearMeshes);
@@ -218,6 +282,18 @@ const setDateBtn = document.getElementById("set-date-btn");
 const trainFilter = document.getElementById("train-filter");
 const gearSelect = document.getElementById("gear-select");
 const showAxesCheckbox = document.getElementById("show-axes");
+const showPositionLabelsCheckbox = document.getElementById("show-position-labels");
+const showCollisionDetectionCheckbox = document.getElementById("show-collision-detection");
+const showConnectingRodsCheckbox = document.getElementById("show-connecting-rods");
+const showAngularMomentumCheckbox = document.getElementById("show-angular-momentum");
+const showStackIndicatorsCheckbox = document.getElementById("show-stack-indicators");
+const showLayerGridsCheckbox = document.getElementById("show-layer-grids");
+const exportJSONBtn = document.getElementById("export-json");
+const exportCSVBtn = document.getElementById("export-csv");
+const exportLaTeXBtn = document.getElementById("export-latex");
+const showFlowDiagramBtn = document.getElementById("show-flow-diagram");
+const showTransferMatrixBtn = document.getElementById("show-transfer-matrix");
+const showValidationDashboardCheckbox = document.getElementById("show-validation-dashboard");
 const tooltip = document.getElementById("tooltip");
 const detailFields = document.querySelectorAll("#gear-details [data-field]");
 
@@ -321,6 +397,61 @@ showToothMarkersCheckbox.addEventListener("change", () => {
   });
 });
 
+showPositionLabelsCheckbox.addEventListener("change", () => {
+  const visible = showPositionLabelsCheckbox.checked;
+  positionLabels.forEach((label) => {
+    label.visible = visible;
+  });
+});
+
+showCollisionDetectionCheckbox.addEventListener("change", () => {
+  const enabled = showCollisionDetectionCheckbox.checked;
+  if (enabled) {
+    updateCollisionDetection();
+  } else {
+    // Remove collision highlighting
+    highlightOverlappingGears(gearMeshes, []);
+    if (collisionReportElement) {
+      collisionReportElement.remove();
+      collisionReportElement = null;
+    }
+  }
+});
+
+showConnectingRodsCheckbox.addEventListener("change", () => {
+  const visible = showConnectingRodsCheckbox.checked;
+  if (visible) {
+    createAllConnectingRods();
+  } else {
+    removeAllConnectingRods();
+  }
+});
+
+showAngularMomentumCheckbox.addEventListener("change", () => {
+  const visible = showAngularMomentumCheckbox.checked;
+  angularMomentumArrows.forEach((arrow) => {
+    arrow.visible = visible;
+  });
+});
+
+showStackIndicatorsCheckbox.addEventListener("change", () => {
+  const visible = showStackIndicatorsCheckbox.checked;
+  stackIndicators.forEach((indicator) => {
+    if (indicator) {
+      indicator.visible = visible;
+    }
+  });
+});
+
+showLayerGridsCheckbox.addEventListener("change", () => {
+  const visible = showLayerGridsCheckbox.checked;
+  if (visible) {
+    createLayerGrids();
+  } else {
+    removeLayerGrids();
+  }
+});
+
 setDateBtn.addEventListener("click", () => {
   const targetDate = new Date(dateInput.value);
   if (isNaN(targetDate)) return;
@@ -337,6 +468,120 @@ setDateBtn.addEventListener("click", () => {
 
   gearSystem.setGearRotation("b1", targetAngle);
 });
+
+exportJSONBtn.addEventListener("click", () => {
+  const model = exportModelAsJSON(gears, connections);
+  const json = JSON.stringify(model, null, 2);
+  downloadFile(json, "antikythera-model.json", "application/json");
+});
+
+exportCSVBtn.addEventListener("click", () => {
+  const csv = exportModelAsCSV(gears, connections);
+  downloadFile(csv, "antikythera-gear-ratios.csv", "text/csv");
+});
+
+exportLaTeXBtn.addEventListener("click", () => {
+  const latex = exportModelAsLaTeX(gears, connections);
+  downloadFile(latex, "antikythera-model.tex", "text/plain");
+});
+
+showFlowDiagramBtn.addEventListener("click", () => {
+  const diagram = generateFlowDiagram("b1", gears, connections);
+  showModal("Angular Momentum Flow Diagram", `<pre>${diagram}</pre>`);
+});
+
+showTransferMatrixBtn.addEventListener("click", () => {
+  const matrixData = generateTransferMatrix(gears, connections);
+  let content = `<h3>Transfer Matrix (${matrixData.size}x${matrixData.size})</h3>`;
+  content += `<p>Gear Order: ${matrixData.gearIds.join(", ")}</p>`;
+  content += `<div style="max-height: 400px; overflow: auto; font-family: monospace; font-size: 10px;">`;
+  content += `<table style="border-collapse: collapse;">`;
+
+  // Header row
+  content += `<tr><th></th>`;
+  matrixData.gearIds.forEach((id) => {
+    content += `<th style="padding: 2px; border: 1px solid #ccc;">${id}</th>`;
+  });
+  content += `</tr>`;
+
+  // Matrix rows
+  matrixData.matrix.forEach((row, i) => {
+    content += `<tr><th style="padding: 2px; border: 1px solid #ccc;">${matrixData.gearIds[i]}</th>`;
+    row.forEach((val) => {
+      const color = val === 0 ? "#ddd" : (val === 1 ? "#cfc" : (val > 0 ? "#ffc" : "#fcc"));
+      content += `<td style="padding: 2px; border: 1px solid #ccc; background: ${color};">${val.toFixed(3)}</td>`;
+    });
+    content += `</tr>`;
+  });
+
+  content += `</table></div>`;
+  showModal("Transfer Function Matrix", content);
+});
+
+showValidationDashboardCheckbox.addEventListener("change", () => {
+  toggleValidationDashboard(showValidationDashboardCheckbox.checked);
+});
+
+function showModal(title, content) {
+  // Create modal if it doesn't exist
+  let modal = document.getElementById("math-modal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "math-modal";
+    modal.style.cssText = `
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      z-index: 10000;
+      max-width: 90%;
+      max-height: 90%;
+      overflow: auto;
+    `;
+    document.body.appendChild(modal);
+
+    const overlay = document.createElement("div");
+    overlay.id = "math-modal-overlay";
+    overlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 9999;
+    `;
+    document.body.appendChild(overlay);
+
+    overlay.addEventListener("click", () => {
+      modal.style.display = "none";
+      overlay.style.display = "none";
+    });
+  }
+
+  const overlay = document.getElementById("math-modal-overlay");
+  modal.innerHTML = `
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+      <h2 style="margin: 0; color: #333;">${title}</h2>
+      <button id="close-modal" style="padding: 5px 15px; cursor: pointer;">Close</button>
+    </div>
+    <div style="color: #333;">
+      ${content}
+    </div>
+  `;
+
+  modal.style.display = "block";
+  overlay.style.display = "block";
+
+  document.getElementById("close-modal").addEventListener("click", () => {
+    modal.style.display = "none";
+    overlay.style.display = "none";
+  });
+}
 
 function initialiseUI() {
   trains.forEach((train) => {
@@ -495,6 +740,101 @@ function handleDrag(controller) {
   }
 }
 
+function updateCollisionDetection() {
+  const collisions = detectGearCollisions(gearMeshes, axisGroups, scale);
+  highlightOverlappingGears(gearMeshes, collisions);
+
+  // Remove old report if exists
+  if (collisionReportElement) {
+    collisionReportElement.remove();
+  }
+
+  // Create new report
+  collisionReportElement = createCollisionReport(collisions);
+  document.body.appendChild(collisionReportElement);
+}
+
+function createAllConnectingRods() {
+  // Remove any existing rods first
+  removeAllConnectingRods();
+
+  // Create rods for all connections
+  connections.forEach((conn) => {
+    const gear1 = gearMeshes.get(conn.from);
+    const gear2 = gearMeshes.get(conn.to);
+
+    if (gear1 && gear2 && conn.type === "mesh") {
+      const pos1 = new THREE.Vector3();
+      const pos2 = new THREE.Vector3();
+      gear1.mesh.getWorldPosition(pos1);
+      gear2.mesh.getWorldPosition(pos2);
+
+      const rod = createConnectingRod(pos1, pos2, scale);
+      scene.add(rod);
+      connectingRods.push(rod);
+    }
+  });
+}
+
+function removeAllConnectingRods() {
+  connectingRods.forEach((rod) => {
+    scene.remove(rod);
+    rod.geometry.dispose();
+    rod.material.dispose();
+  });
+  connectingRods.length = 0;
+}
+
+function updateAngularMomentumArrows() {
+  angularMomentumArrows.forEach((arrow, gearId) => {
+    const gearEntry = gearMeshes.get(gearId);
+    if (gearEntry) {
+      const rotation = gearEntry.mesh.rotation.y;
+      const angularVelocity = rotation - (gearEntry.lastRotation || 0);
+      gearEntry.lastRotation = rotation;
+
+      // Update arrow direction based on rotation direction
+      if (Math.abs(angularVelocity) > 0.0001) {
+        const direction = angularVelocity > 0 ? 1 : -1;
+        arrow.position.y = 40 * scale * direction;
+        arrow.rotation.x = direction > 0 ? 0 : Math.PI;
+
+        // Update color
+        const color = direction > 0 ? 0x4488ff : 0xff4488;
+        arrow.material.color.setHex(color);
+        arrow.material.emissive.setHex(color);
+      }
+    }
+  });
+}
+
+function createLayerGrids() {
+  // Remove any existing grids first
+  removeLayerGrids();
+
+  // Find unique stack heights
+  const uniqueHeights = new Set();
+  gears.forEach((gear) => {
+    uniqueHeights.add(gear.stack);
+  });
+
+  // Create a grid for each unique height
+  uniqueHeights.forEach((height) => {
+    const grid = createLayerGridPlane(height, scale);
+    scene.add(grid);
+    layerGrids.push(grid);
+  });
+}
+
+function removeLayerGrids() {
+  layerGrids.forEach((grid) => {
+    scene.remove(grid);
+    grid.geometry.dispose();
+    grid.material.dispose();
+  });
+  layerGrids.length = 0;
+}
+
 function animate(now) {
   const delta = (now - lastTime) / 1000;
   lastTime = now;
@@ -517,6 +857,17 @@ function animate(now) {
     }
     binding.pivot.rotation.z = gearEntry.mesh.rotation.y;
   });
+
+  // Update angular momentum arrows if visible
+  if (showAngularMomentumCheckbox.checked) {
+    updateAngularMomentumArrows();
+  }
+
+  // Update validation dashboard if visible
+  if (showValidationDashboardCheckbox.checked) {
+    updateValidationDashboard(gearMeshes, gearSystem, delta);
+  }
+
   renderer.render(scene, camera);
 }
 
