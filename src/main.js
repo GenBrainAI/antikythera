@@ -29,6 +29,7 @@ import {
   updateValidationDashboard,
   toggleValidationDashboard,
 } from "./validationDashboard.js";
+import { runFullVisualizationValidation } from "../verification/visualizationValidation.js";
 import {
   calculateAllPlanetsPositions,
   dateToJulianDay,
@@ -301,6 +302,7 @@ const exportLaTeXBtn = document.getElementById("export-latex");
 const showFlowDiagramBtn = document.getElementById("show-flow-diagram");
 const showTransferMatrixBtn = document.getElementById("show-transfer-matrix");
 const showValidationDashboardCheckbox = document.getElementById("show-validation-dashboard");
+const run3DValidationBtn = document.getElementById("run-3d-validation");
 const tooltip = document.getElementById("tooltip");
 const detailFields = document.querySelectorAll("#gear-details [data-field]");
 
@@ -527,6 +529,34 @@ showTransferMatrixBtn.addEventListener("click", () => {
 
 showValidationDashboardCheckbox.addEventListener("change", () => {
   toggleValidationDashboard(showValidationDashboardCheckbox.checked);
+});
+
+run3DValidationBtn.addEventListener("click", () => {
+  console.clear();
+  console.log("🔍 Running 3D Visualization Validation...\n");
+
+  // Collect current rotation data for direction validation
+  const lastRotations = {};
+  gearSystem.gears.forEach((gearEntry, id) => {
+    lastRotations[id] = gearEntry.mesh.rotation.y;
+  });
+
+  // Run validation
+  const results = runFullVisualizationValidation(scene, lastRotations);
+
+  // Count totals
+  const totalErrors = Object.values(results).reduce((sum, r) => sum + (r.errors?.length || 0), 0);
+  const totalWarnings = Object.values(results).reduce((sum, r) => sum + (r.warnings?.length || 0), 0);
+  const totalPassed = Object.values(results).reduce((sum, r) => sum + (r.passed?.length || 0), 0);
+
+  // Show user-friendly alert
+  if (totalErrors === 0 && totalWarnings === 0) {
+    alert(`✅ 3D Visualization Validation PASSED!\n\n${totalPassed} checks passed.\n\nCheck console for detailed report.`);
+  } else if (totalErrors === 0) {
+    alert(`⚠️ Validation completed with ${totalWarnings} warnings.\n\n${totalPassed} checks passed.\n\nCheck console for details.`);
+  } else {
+    alert(`❌ Validation found ${totalErrors} errors and ${totalWarnings} warnings.\n\n${totalPassed} checks passed.\n\nCheck console for detailed report.`);
+  }
 });
 
 function showModal(title, content) {
